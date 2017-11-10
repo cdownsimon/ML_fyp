@@ -4,13 +4,24 @@ import pandas as pd
 from tqdm import tqdm
 
 
-def MarketCapElimination(df, market_cap=None):
+def MarketCapElimination(df, market_cap=None, mode='by_row', date=None):
     if not market_cap:
         raise Exception("MarketCapElimination: market_cap must not be None.")
     if not type(market_cap) == int and not type(market_cap) == float:
         raise Exception("MarketCapElimination: market_cap must be a number.")
 
-    return df[df.market_cap >= market_cap]
+    if mode == 'by_row':
+        print("MarketCapElimination: Eliminate record by row.")
+        result = df[df.market_cap >= market_cap]
+    elif mode == 'by_ticker':
+        print("MarketCapElimination: Eliminate record by ticker and date.")
+        if not date:
+            print("MarketCapElimination: Date must be specified in mode:by_ticker.")
+        else:
+            tic = df[(df['date'] == date) & (df['market_cap'] >= market_cap)]['ticker']
+            result = df[df['ticker'].isin(tic)]
+
+    return result
 
 
 def FactorsSelection(df, factors_list=None):

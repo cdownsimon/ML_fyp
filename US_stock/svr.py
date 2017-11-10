@@ -24,14 +24,12 @@ factors = ['cash_flow_yield', 'free_cash_flow_yield', 'cfroic', 'cash_flow_to_to
 
 data = util.FactorsSelection(data, factors)
 
-# tic = data[(data['date'] == '2016-12-31') & (data['market_cap'] > 100)]['ticker']
-# data = data[data['ticker'].isin(tic)]
-
 # Generate target label
 data = util.TargetLabelCaculation(data)
 
 # Eliminate the stocks which market cap < 100M
-data = util.MarketCapElimination(data, 100)
+# data = util.MarketCapElimination(data, 100)
+data = util.MarketCapElimination(data, 100, mode='by_ticker', date='2016-01-31')
 
 # Split dataset to train/test
 df_train, df_test = util.TrainTestSpliting(data, 2010)

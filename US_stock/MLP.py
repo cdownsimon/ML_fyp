@@ -31,16 +31,12 @@ factors = ['cash_flow_yield', 'free_cash_flow_yield', 'cfroic', 'cash_flow_to_to
 
 data = util.FactorsSelection(data, factors)
 
-# print('Original: {}', format(data.ticker.unique().shape[0]))
-# tic = data[(data['date'] == '2016-12-31') & (data['market_cap'] > 100)]['ticker']
-# data = data[data['ticker'].isin(tic)]
-# print('After: {}', format(data.ticker.unique().shape[0]))
-
 # Generate target label
 data = util.TargetLabelCaculation(data)
 
 # Eliminate the stocks which market cap < 100M
 # data = util.MarketCapElimination(data, 100)
+data = util.MarketCapElimination(data, 100, mode='by_ticker', date='2016-01-31')
 
 # Split dataset to train/test
 df_train, df_test = util.TrainTestSpliting(data, 2010)
@@ -60,7 +56,7 @@ test_X, test_y = df_test.drop(['date', 'ticker', 'last_price', 'next_return', 't
 
 # Build the model
 # batch_size = 200
-batch_size = len(train_X) / 1000
+batch_size = len(train_X) / 100
 model = Sequential()
 model.add(Dense(300, input_shape=(train_X.shape[1],)))
 # model.add(BatchNormalization())

@@ -27,8 +27,9 @@ data = util.FactorsSelection(data, factors)
 # Generate target label
 data = util.TargetLabelCaculation(data)
 
-# Eliminate the stocks which market cap < 100M
-data = util.MarketCapElimination(data, 100)
+# Eliminate the stocks which market cap < 800M
+# data = util.MarketCapElimination(data, 800)
+data = util.MarketCapElimination(data, 800, mode='by_ticker', date='2016-01-31')
 
 # Split dataset to train/test
 df_train, df_test = util.TrainTestSpliting(data, 2010)
@@ -47,7 +48,7 @@ train_X, train_y = df_train.drop(['date', 'ticker', 'last_price', 'next_return',
 test_X, test_y = df_test.drop(['date', 'ticker', 'last_price', 'next_return', 'target'], axis=1).as_matrix(), df_test['target'].as_matrix()
 
 # Build the model
-SVMRegressor = svm.SVR(C=10, tol=0.00001, verbose=True)
+SVMRegressor = svm.SVR(C=1, tol=0.00001, verbose=True)
 SVMRegressor.fit(train_X, train_y)
 
 predicted_result = SVMRegressor.predict(test_X)

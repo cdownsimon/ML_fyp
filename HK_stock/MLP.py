@@ -34,8 +34,9 @@ data = util.FactorsSelection(data, factors)
 # Generate target label
 data = util.TargetLabelCaculation(data)
 
-# Eliminate the stocks which market cap < 100M
-# data = util.MarketCapElimination(data, 100)
+# Eliminate the stocks which market cap < 800M
+# data = util.MarketCapElimination(data, 800)
+data = util.MarketCapElimination(data, 800, mode='by_ticker', date='2016-01-31')
 
 # Split dataset to train/test
 df_train, df_test = util.TrainTestSpliting(data, 2010)
@@ -69,7 +70,7 @@ model.add(Dense(1))
 model.add(Activation('sigmoid'))
 optimizer = optimizers.Adam()
 model.compile(loss='binary_crossentropy', metrics=['accuracy'], optimizer=optimizer)
-model.fit(train_X, train_y, epochs=200, batch_size=batch_size, verbose=1, shuffle=True)
+model.fit(train_X, train_y, epochs=500, batch_size=batch_size, verbose=1, shuffle=True)
 
 # Predict the target of test set
 predicted_result = model.predict(test_X)
