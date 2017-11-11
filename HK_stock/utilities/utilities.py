@@ -3,6 +3,9 @@ from sklearn import preprocessing
 import pandas as pd
 from tqdm import tqdm
 
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 def MarketCapElimination(df, market_cap=None, mode='by_row', date=None):
     if not market_cap:
@@ -16,9 +19,9 @@ def MarketCapElimination(df, market_cap=None, mode='by_row', date=None):
     elif mode == 'by_ticker':
         print("MarketCapElimination: Eliminate record by ticker and date.")
         if not date:
-            print("MarketCapElimination: Date must be specified in mode by_ticker.")
+            print("MarketCapElimination: Date must be specified in mode:by_ticker.")
         else:
-            tic = df[(df['date'] == '2016-01-31') & (df['market_cap'] >= market_cap)]['ticker']
+            tic = df[(df['date'] == date) & (df['market_cap'] >= market_cap)]['ticker']
             result = df[df['ticker'].isin(tic)]
 
     return result
@@ -98,6 +101,120 @@ def TargetLabelCaculation(df, p=None, period=None):
     return df
 
 
+def MinMaxByTicker(df_train_by_ticker, df_test_by_ticker, min_max=None):
+    try:
+        df_train_tmp_dict, df_test_tmp_dict = {}, {}
+        df_train_tmp_dict['date'] = df_train_by_ticker['date'].tolist(),
+        df_train_tmp_dict['ticker'] = df_train_by_ticker['ticker'].tolist()
+        df_train_tmp_dict['last_price'] = df_train_by_ticker['last_price'].tolist()
+        df_train_tmp_dict['next_return'] = df_train_by_ticker['next_return'].tolist()
+        df_train_tmp_dict['target'] = df_train_by_ticker['target'].tolist()
+    except KeyError as KE:
+        raise KE
+
+    df_train_by_ticker.drop(['date', 'ticker', 'last_price', 'next_return', 'target'], axis=1, inplace=True)
+
+    min_max_scaler = preprocessing.MinMaxScaler(feature_range=min_max)
+    np_train_scaled = min_max_scaler.fit_transform(df_train_by_ticker)
+    df_train_normalized = pd.DataFrame(np_train_scaled, columns=df_train_by_ticker.columns)
+
+    for i in df_train_tmp_dict:
+        # To prevent TypeError
+        if i == 'date':
+            if len(df_train_tmp_dict[i]) == 1:
+                df_train_normalized.loc[:, i] = df_train_tmp_dict[i][0]
+            else:
+                df_train_normalized.loc[:, i] = df_train_tmp_dict[i]
+        else:
+            df_train_normalized.loc[:, i] = df_train_tmp_dict[i]
+
+    if df_test_by_ticker.empty:
+        df_test_normalized = pd.DataFrame()
+    else:
+        try:
+            df_test_tmp_dict['date'] = df_test_by_ticker['date'].tolist()
+            df_test_tmp_dict['ticker'] = df_test_by_ticker['ticker'].tolist()
+            df_test_tmp_dict['last_price'] = df_test_by_ticker['last_price'].tolist()
+            df_test_tmp_dict['next_return'] = df_test_by_ticker['next_return'].tolist()
+            df_test_tmp_dict['target'] = df_test_by_ticker['target'].tolist()
+        except KeyError as KE:
+            raise KE
+
+        df_test_by_ticker.drop(['date', 'ticker', 'last_price', 'next_return', 'target'], axis=1, inplace=True)
+
+        np_test_scaled = min_max_scaler.transform(df_test_by_ticker)
+        df_test_normalized = pd.DataFrame(np_test_scaled, columns=df_test_by_ticker.columns)
+
+        for i in df_test_tmp_dict:
+            # To prevent TypeError
+            if i == 'date':
+                if len(df_test_tmp_dict[i]) == 1:
+                    df_test_normalized.loc[:, i] = df_test_tmp_dict[i][0]
+                else:
+                    df_test_normalized.loc[:, i] = df_test_tmp_dict[i]
+            else:
+                df_test_normalized.loc[:, i] = df_test_tmp_dict[i]
+
+    return df_train_normalized, df_test_normalized
+
+
+# Parallel version
+def MinMaxNormalization_p(df_train, df_test, min_max=None):
+    if not min_max:
+        print("MinMaxNormalization: min_max is None, set min = 0 and max = 1 by default.")
+        min_max = (0, 1)
+
+    df_train_key, df_test_key = df_train['ticker'].unique(), df_test['ticker'].unique()
+    df_train_by_ticker, df_test_by_ticker = {}, {}
+    for t, d in df_train.groupby(['ticker']):
+        df_train_by_ticker[t] = d
+    for t, d in df_test.groupby(['ticker']):
+        df_test_by_ticker[t] = d
+
+    cnt = 0
+    for t in df_test_key:
+        if t not in df_train_key:
+            print('MinMaxNormalization: ticker {} only appear in test set,eliminated.'.format(t))
+            df_test_by_ticker.pop(t, None)
+            cnt += 1
+    print('MinMaxNormalization: {} tickers are elimnated.'.format(cnt))
+
+    print('MinMaxNormalization: Processing...')
+    df_train_normalized_list, df_test_normalized_list = [], []
+
+    futures = []
+    with ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+        for t in df_train_by_ticker:
+            if t not in df_test_by_ticker:
+                futures.append(executor.submit(MinMaxByTicker, df_train_by_ticker[t], pd.DataFrame(), min_max))
+            else:
+                futures.append(executor.submit(MinMaxByTicker, df_train_by_ticker[t], df_test_by_ticker[t], min_max))
+
+        # For showing process bar only
+        kwargs = {
+            'total': len(futures),
+            'unit': 'nap',
+            'unit_scale': True,
+            'leave': True
+        }
+
+        for f in tqdm(as_completed(futures), **kwargs):
+            pass
+
+    for future in futures:
+        if not future.result()[0].empty:
+            df_train_normalized_list.append(future.result()[0])
+        if not future.result()[1].empty:
+            df_test_normalized_list.append(future.result()[1])
+
+    df_train_min_max_normalized, df_test_min_max_normalized = pd.concat(df_train_normalized_list), pd.concat(df_test_normalized_list)
+
+    df_train_min_max_normalized.sort_values(['date'], inplace=True)
+    df_test_min_max_normalized.sort_values(['date'], inplace=True)
+
+    return (df_train_min_max_normalized, df_test_min_max_normalized)
+
+
 def MinMaxNormalization(df_train, df_test, min_max=None):
     if not min_max:
         print("MinMaxNormalization: min_max is None, set min = 0 and max = 1 by default.")
@@ -133,7 +250,7 @@ def MinMaxNormalization(df_train, df_test, min_max=None):
 
         df_train_by_ticker[t].drop(['date', 'ticker', 'last_price', 'next_return', 'target'], axis=1, inplace=True)
 
-        min_max_scaler = preprocessing.MinMaxScaler()
+        min_max_scaler = preprocessing.MinMaxScaler(feature_range=min_max)
         np_train_scaled = min_max_scaler.fit_transform(df_train_by_ticker[t])
         df_train_normalized = pd.DataFrame(np_train_scaled, columns=df_train_by_ticker[t].columns)
 

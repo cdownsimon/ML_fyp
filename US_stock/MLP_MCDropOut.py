@@ -19,7 +19,7 @@ from sklearn.metrics import mean_squared_error
 
 np.random.seed(7)
 
-input_file = 'result.csv'
+input_file = 'US_stock.csv'
 output_file = 'MLP_MCDropout_predicted.csv'
 
 # Read csv file
@@ -29,7 +29,7 @@ data = pd.read_csv(input_file)
 factors = ['cash_flow_yield', 'free_cash_flow_yield', 'cfroic', 'cash_flow_to_total_ssets',
            'sales_yield', 'sales_yield_fy1', 'sales_yield_fy2', 'sales_yield_mean',
            'sales_to_ev', 'asset_turnover', 'asset_turnover_12m_change', 'rec_1m_change',
-           'rec_3m_change', 'earning_mom_1m_mean_fy1_fy2', 'rsi_9day', 'bbg_mom_12m_vol_ad',
+           'rec_3m_change', 'earning_mom_1m_mean_fy1_fy2', 'rsi_9day', 'bbg_mom_12m_vol_adj',
            'market_cap']
 
 data = util.FactorsSelection(data, factors)
@@ -38,38 +38,43 @@ data = util.FactorsSelection(data, factors)
 data = util.TargetLabelCaculation(data)
 
 # Eliminate the stocks which market cap < 100M
-data = util.MarketCapElimination(data, 100)
+# data = util.MarketCapElimination(data, 100)
+data = util.MarketCapElimination(data, 100, mode='by_ticker', date='2016-01-31')
 
 # Split dataset to train/test
 df_train, df_test = util.TrainTestSpliting(data, 2010)
 
 # Perform Min Max scaling on each stock
-df_train, df_test = util.MinMaxNormalization(df_train, df_test)
+# df_train, df_test = util.MinMaxNormalization(df_train, df_test)
+df_train, df_test = util.MinMaxNormalization_p(df_train, df_test)
 
 # Drop the row which target is NA
 df_train.dropna(subset=['target'], inplace=True)
-df_test.dropna(subset=['target'], inplace=True)
+# df_test.dropna(subset=['target'], inplace=True)
+# Fill the target of test set to 0.5 (for convenient)
+df_test['target'].fillna(0.5, inplace=True)
 
 # Prepare np array for train/test
 train_X, train_y = df_train.drop(['date', 'ticker', 'last_price', 'next_return', 'target'], axis=1).as_matrix(), df_train['target'].as_matrix()
 test_X, test_y = df_test.drop(['date', 'ticker', 'last_price', 'next_return', 'target'], axis=1).as_matrix(), df_test['target'].as_matrix()
 
 # Build the model
+batch_size = len(train_X) / 100
 model = Sequential()
-#model.add(Lambda(lambda x: K.dropout(x, level=0.2), input_shape=(train_X.shape[1],)))
+# model.add(Lambda(lambda x: K.dropout(x, level=0.2), input_shape=(train_X.shape[1],)))
 model.add(Dense(300, input_shape=(train_X.shape[1],)))
-# model.add(BatchNormalization())
+model.add(BatchNormalization())
 model.add(Activation('tanh'))
 model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
 model.add(Dense(150))
-# model.add(BatchNormalization())
+model.add(BatchNormalization())
 model.add(Activation('tanh'))
 model.add(Lambda(lambda x: K.dropout(x, level=0.5)))
 model.add(Dense(1))
 model.add(Activation('sigmoid'))
 adam = optimizers.adam()
-model.compile(loss='binary_crossentropy', optimizer=adam)
-model.fit(train_X, train_y, epochs=150, batch_size=len(train_X) / 100, verbose=1, shuffle=True)
+model.compile(loss='binary_crossentropy', metrics=['accuracy'], optimizer=adam)
+model.fit(train_X, train_y, epochs=150, batch_size=batch_size, verbose=1, shuffle=True)
 
 # Sampling using the dropout NN
 print("Sampling...")

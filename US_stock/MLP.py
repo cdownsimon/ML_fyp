@@ -42,7 +42,8 @@ data = util.MarketCapElimination(data, 100, mode='by_ticker', date='2016-01-31')
 df_train, df_test = util.TrainTestSpliting(data, 2010)
 
 # Perform Min Max scaling on each stock
-df_train, df_test = util.MinMaxNormalization(df_train, df_test)
+# df_train, df_test = util.MinMaxNormalization(df_train, df_test)
+df_train, df_test = util.MinMaxNormalization_p(df_train, df_test)
 
 # Drop the row which target is NA
 df_train.dropna(subset=['target'], inplace=True)

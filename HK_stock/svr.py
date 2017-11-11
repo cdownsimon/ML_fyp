@@ -10,6 +10,7 @@ from sklearn.metrics import mean_squared_error
 np.random.seed(7)
 
 input_file = 'HK_stock.csv'
+# output_file = 'svr_predicted.csv'
 output_file = 'svr_predicted.csv'
 
 # Read csv file
@@ -35,7 +36,8 @@ data = util.MarketCapElimination(data, 800, mode='by_ticker', date='2016-01-31')
 df_train, df_test = util.TrainTestSpliting(data, 2010)
 
 # Perform Min Max scaling on each stock
-df_train, df_test = util.MinMaxNormalization(df_train, df_test)
+# df_train, df_test = util.MinMaxNormalization(df_train, df_test)
+df_train, df_test = util.MinMaxNormalization_p(df_train, df_test)
 
 # Drop the row which target is NA
 df_train.dropna(subset=['target'], inplace=True)
