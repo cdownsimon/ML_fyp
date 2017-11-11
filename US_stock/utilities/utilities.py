@@ -193,8 +193,8 @@ def MinMaxNormalization_p(df_train, df_test, min_max=None):
         # For showing process bar only
         kwargs = {
             'total': len(futures),
-            'unit': 'nap',
-            'unit_scale': True,
+            'unit': 'tic',
+            'unit_scale': False,
             'leave': True
         }
 
