@@ -303,6 +303,200 @@ def MinMaxNormalization(df_train, df_test, min_max=None):
     return (df_train_min_max_normalized, df_test_min_max_normalized)
 
 
+def StandardizeByTicker(df_train_by_ticker, df_test_by_ticker):
+    try:
+        df_train_tmp_dict, df_test_tmp_dict = {}, {}
+        df_train_tmp_dict['date'] = df_train_by_ticker['date'].tolist(),
+        df_train_tmp_dict['ticker'] = df_train_by_ticker['ticker'].tolist()
+        df_train_tmp_dict['last_price'] = df_train_by_ticker['last_price'].tolist()
+        df_train_tmp_dict['next_return'] = df_train_by_ticker['next_return'].tolist()
+        df_train_tmp_dict['target'] = df_train_by_ticker['target'].tolist()
+    except KeyError as KE:
+        raise KE
+
+    df_train_by_ticker.drop(['date', 'ticker', 'last_price', 'next_return', 'target'], axis=1, inplace=True)
+
+    standard_scaler = preprocessing.StandardScaler()
+    np_train_scaled = standard_scaler.fit_transform(df_train_by_ticker)
+    df_train_normalized = pd.DataFrame(np_train_scaled, columns=df_train_by_ticker.columns)
+
+    for i in df_train_tmp_dict:
+        # To prevent TypeError
+        if i == 'date':
+            if len(df_train_tmp_dict[i]) == 1:
+                df_train_normalized.loc[:, i] = df_train_tmp_dict[i][0]
+            else:
+                df_train_normalized.loc[:, i] = df_train_tmp_dict[i]
+        else:
+            df_train_normalized.loc[:, i] = df_train_tmp_dict[i]
+
+    if df_test_by_ticker.empty:
+        df_test_normalized = pd.DataFrame()
+    else:
+        try:
+            df_test_tmp_dict['date'] = df_test_by_ticker['date'].tolist()
+            df_test_tmp_dict['ticker'] = df_test_by_ticker['ticker'].tolist()
+            df_test_tmp_dict['last_price'] = df_test_by_ticker['last_price'].tolist()
+            df_test_tmp_dict['next_return'] = df_test_by_ticker['next_return'].tolist()
+            df_test_tmp_dict['target'] = df_test_by_ticker['target'].tolist()
+        except KeyError as KE:
+            raise KE
+
+        df_test_by_ticker.drop(['date', 'ticker', 'last_price', 'next_return', 'target'], axis=1, inplace=True)
+
+        np_test_scaled = standard_scaler.transform(df_test_by_ticker)
+        df_test_normalized = pd.DataFrame(np_test_scaled, columns=df_test_by_ticker.columns)
+
+        for i in df_test_tmp_dict:
+            # To prevent TypeError
+            if i == 'date':
+                if len(df_test_tmp_dict[i]) == 1:
+                    df_test_normalized.loc[:, i] = df_test_tmp_dict[i][0]
+                else:
+                    df_test_normalized.loc[:, i] = df_test_tmp_dict[i]
+            else:
+                df_test_normalized.loc[:, i] = df_test_tmp_dict[i]
+
+    return df_train_normalized, df_test_normalized
+
+
+# Parallel version
+def Standardization_p(df_train, df_test):
+    df_train_key, df_test_key = df_train['ticker'].unique(), df_test['ticker'].unique()
+    df_train_by_ticker, df_test_by_ticker = {}, {}
+    for t, d in df_train.groupby(['ticker']):
+        df_train_by_ticker[t] = d
+    for t, d in df_test.groupby(['ticker']):
+        df_test_by_ticker[t] = d
+
+    cnt = 0
+    for t in df_test_key:
+        if t not in df_train_key:
+            print('Standardization: ticker {} only appear in test set,eliminated.'.format(t))
+            df_test_by_ticker.pop(t, None)
+            cnt += 1
+    print('Standardization: {} tickers are elimnated.'.format(cnt))
+
+    print('Standardization: Processing...')
+    df_train_normalized_list, df_test_normalized_list = [], []
+
+    futures = []
+    with ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
+        for t in df_train_by_ticker:
+            if t not in df_test_by_ticker:
+                futures.append(executor.submit(StandardizeByTicker, df_train_by_ticker[t], pd.DataFrame()))
+            else:
+                futures.append(executor.submit(StandardizeByTicker, df_train_by_ticker[t], df_test_by_ticker[t]))
+
+        # For showing process bar only
+        kwargs = {
+            'total': len(futures),
+            'unit': 'tic',
+            'unit_scale': False,
+            'leave': True
+        }
+
+        for f in tqdm(as_completed(futures), **kwargs):
+            pass
+
+    for future in futures:
+        if not future.result()[0].empty:
+            df_train_normalized_list.append(future.result()[0])
+        if not future.result()[1].empty:
+            df_test_normalized_list.append(future.result()[1])
+
+    df_train_min_max_normalized, df_test_min_max_normalized = pd.concat(df_train_normalized_list), pd.concat(df_test_normalized_list)
+
+    df_train_min_max_normalized.sort_values(['date'], inplace=True)
+    df_test_min_max_normalized.sort_values(['date'], inplace=True)
+
+    return (df_train_min_max_normalized, df_test_min_max_normalized)
+
+
+def Standardization(df_train, df_test):
+    df_train_key, df_test_key = df_train['ticker'].unique(), df_test['ticker'].unique()
+    df_train_by_ticker, df_test_by_ticker = {}, {}
+    for t, d in df_train.groupby(['ticker']):
+        df_train_by_ticker[t] = d
+    for t, d in df_test.groupby(['ticker']):
+        df_test_by_ticker[t] = d
+
+    cnt = 0
+    for t in df_test_key:
+        if t not in df_train_key:
+            print('Standardization: ticker {} only appear in test set,eliminated.'.format(t))
+            df_test_by_ticker.pop(t, None)
+            cnt += 1
+    print('Standardization: {} tickers are elimnated.'.format(cnt))
+
+    print('Standardization: Processing...')
+    df_train_normalized_list, df_test_normalized_list = [], []
+    for t in tqdm(df_train_by_ticker):
+        try:
+            df_train_tmp_dict, df_test_tmp_dict = {}, {}
+            df_train_tmp_dict['date'] = df_train_by_ticker[t]['date'].tolist(),
+            df_train_tmp_dict['ticker'] = df_train_by_ticker[t]['ticker'].tolist()
+            df_train_tmp_dict['last_price'] = df_train_by_ticker[t]['last_price'].tolist()
+            df_train_tmp_dict['next_return'] = df_train_by_ticker[t]['next_return'].tolist()
+            df_train_tmp_dict['target'] = df_train_by_ticker[t]['target'].tolist()
+        except KeyError as KE:
+            raise KE
+
+        df_train_by_ticker[t].drop(['date', 'ticker', 'last_price', 'next_return', 'target'], axis=1, inplace=True)
+
+        standard_scaler = preprocessing.StandardScaler()
+        np_train_scaled = standard_scaler.fit_transform(df_train_by_ticker[t])
+        df_train_normalized = pd.DataFrame(np_train_scaled, columns=df_train_by_ticker[t].columns)
+
+        for i in df_train_tmp_dict:
+            # To prevent TypeError
+            if i == 'date':
+                if len(df_train_tmp_dict[i]) == 1:
+                    df_train_normalized.loc[:, i] = df_train_tmp_dict[i][0]
+                else:
+                    df_train_normalized.loc[:, i] = df_train_tmp_dict[i]
+            else:
+                df_train_normalized.loc[:, i] = df_train_tmp_dict[i]
+
+        df_train_normalized_list.append(df_train_normalized)
+
+        try:
+            df_test_tmp_dict['date'] = df_test_by_ticker[t]['date'].tolist()
+            df_test_tmp_dict['ticker'] = df_test_by_ticker[t]['ticker'].tolist()
+            df_test_tmp_dict['last_price'] = df_test_by_ticker[t]['last_price'].tolist()
+            df_test_tmp_dict['next_return'] = df_test_by_ticker[t]['next_return'].tolist()
+            df_test_tmp_dict['target'] = df_test_by_ticker[t]['target'].tolist()
+        except KeyError as KE:
+            if t in df_test_by_ticker:
+                raise KE
+        if t not in df_test_by_ticker:
+            continue
+
+        df_test_by_ticker[t].drop(['date', 'ticker', 'last_price', 'next_return', 'target'], axis=1, inplace=True)
+
+        np_test_scaled = standard_scaler.transform(df_test_by_ticker[t])
+        df_test_normalized = pd.DataFrame(np_test_scaled, columns=df_test_by_ticker[t].columns)
+
+        for i in df_test_tmp_dict:
+            # To prevent TypeError
+            if i == 'date':
+                if len(df_test_tmp_dict[i]) == 1:
+                    df_test_normalized.loc[:, i] = df_test_tmp_dict[i][0]
+                else:
+                    df_test_normalized.loc[:, i] = df_test_tmp_dict[i]
+            else:
+                df_test_normalized.loc[:, i] = df_test_tmp_dict[i]
+
+        df_test_normalized_list.append(df_test_normalized)
+
+    df_train_min_max_normalized, df_test_min_max_normalized = pd.concat(df_train_normalized_list), pd.concat(df_test_normalized_list)
+
+    df_train_min_max_normalized.sort_values(['date'], inplace=True)
+    df_test_min_max_normalized.sort_values(['date'], inplace=True)
+
+    return (df_train_min_max_normalized, df_test_min_max_normalized)
+
+
 def EliminateToSeasonal(df, months=None):
     if not months:
         print('EliminateToSeasonal: months is None, choose 1,4,7,10 by default.')
